@@ -1,0 +1,47 @@
+# Initial stage: Build the application
+FROM node:18.16.0-alpine as builder
+
+# Set the working directory
+WORKDIR /app
+
+# Install global packages
+RUN npm install -g prisma pnpm
+
+# Copy the entire packages directory
+COPY packages ./packages
+
+# Copy root files
+COPY pnpm-lock.yaml ./packages/server
+COPY packages/server/service-account.json ./packages/server/service-account.json
+
+# Change to server directory
+WORKDIR /app/packages/server
+
+# Generate Prisma client
+RUN prisma generate
+
+# Install server dependencies
+RUN pnpm install --frozen-lockfile
+
+# Build the application
+RUN pnpm build
+
+# Final stage: Create the final image
+FROM node:18.16.0-alpine
+
+# Set the working directory
+WORKDIR /app
+
+# Copy from the "builder" stage
+COPY --from=builder /app/packages ./packages
+
+# Set the environment variable for production
+ENV NODE_ENV production
+
+# The app listens on port 3000, so expose this port
+EXPOSE 3000
+
+WORKDIR /app/packages/server
+
+# Define the command to run the app
+CMD ["npm", "start"]
