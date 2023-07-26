@@ -1,0 +1,270 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  MENTOR
+  ADMIN
+}
+
+model User {
+  id                    String              @id @default(uuid())
+  email                 String              @unique
+  name                  String
+  role                  Role                @default(USER)
+  preferences           UserPreferences[]
+  institutions          UserInstitutions[]
+  network               Network[]           @relation("NetworkUser")
+  mentees               Network[]           @relation("NetworkMentor")
+  notificationsSent     Notification[]      @relation("NotificationSender")
+  notificationsReceived Notification[]      @relation("NotificationRecipient")
+  attempts              TaskAttempt[]
+  submissions           AttemptSubmission[]
+  submissionReviews     SubmissionReview[]
+}
+
+model UserPreferences {
+  id        String   @id @default(uuid())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum InstitutionRole {
+  MEMBER
+  FACILITATOR
+  ADMIN
+}
+
+model Institution {
+  id               String             @id @default(uuid())
+  logo             String?
+  name             String
+  UserInstitutions UserInstitutions[]
+}
+
+model UserInstitutions {
+  id            String          @id @default(uuid())
+  user          User            @relation(fields: [userId], references: [id])
+  userId        String
+  institution   Institution     @relation(fields: [institutionId], references: [id])
+  institutionId String
+  role          InstitutionRole @default(MEMBER)
+
+  @@unique([userId, institutionId], name: "userId_institutionId")
+}
+
+model Network {
+  id       String @id @default(uuid())
+  user     User   @relation(fields: [userId], references: [id], name: "NetworkUser")
+  userId   String
+  mentor   User   @relation(fields: [mentorId], references: [id], name: "NetworkMentor")
+  mentorId String
+}
+
+// Notifications
+enum NotificationType {
+  ATTEMPT_REVIEW
+}
+
+model Notification {
+  id          String @id @default(uuid())
+  recipient   User   @relation(fields: [recipientId], references: [id], name: "NotificationRecipient")
+  recipientId String
+  sender      User   @relation(fields: [senderId], references: [id], name: "NotificationSender")
+  senderId    String
+
+  type      NotificationType
+  read      Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  imageUrl String?
+  message  String?
+
+  payload Json
+}
+
+// Tasks
+model Task {
+  id               String                 @id @default(uuid())
+  name             String
+  color            String
+  priority         Int
+  form             TaskFormFields[]
+  instructions     TaskInstructions[]
+  starDescriptions TaskStarDescriptions[]
+  setup            TaskSetup[]
+  TaskScoring      TaskScoring[]
+  TaskAttempt      TaskAttempt[]
+}
+
+enum FormFieldType {
+  BOOLEAN
+  NUMBER
+}
+
+model TaskFormFields {
+  id                String              @id @default(uuid())
+  slug              String
+  task              Task                @relation(fields: [taskId], references: [id])
+  taskId            String
+  label             String
+  type              FormFieldType
+  min               Int?
+  max               Int?
+  unit              String?
+  TaskScoringFields TaskScoringFields[]
+  TaskAttemptForm   TaskAttemptForm[]
+
+  @@unique([taskId, slug], name: "taskId_slug")
+}
+
+model TaskInstructions {
+  id     String @id @default(uuid())
+  task   Task   @relation(fields: [taskId], references: [id])
+  taskId String @unique
+  text   String
+}
+
+model TaskSetup {
+  id          String                 @id @default(uuid())
+  task        Task                   @relation(fields: [taskId], references: [id])
+  taskId      String                 @unique
+  text        String
+  attachments TaskSetupAttachments[]
+}
+
+model TaskSetupAttachments {
+  id          String    @id @default(uuid())
+  taskSetup   TaskSetup @relation(fields: [taskSetupId], references: [id])
+  taskSetupId String
+  url         String    @unique
+}
+
+model TaskStarDescriptions {
+  id        String @id @default(uuid())
+  starLevel Int
+  task      Task   @relation(fields: [taskId], references: [id])
+  taskId    String
+  text      String
+
+  // Unique constraint on star level and task
+  @@unique([starLevel, taskId], name: "taskId_starLevel")
+}
+
+// Task Scoring
+model TaskScoring {
+  id              String              @id @default(uuid())
+  task            Task                @relation(fields: [taskId], references: [id])
+  taskId          String
+  starLevel       Int
+  fields          TaskScoringFields[]
+  TaskScoringTime TaskScoringTime[]
+
+  consecutiveAttempts Int? // How many times in a row the user must pass for the star
+  totalAttempts       Int? // How many times the user must pass for the star
+
+  @@unique([starLevel, taskId], name: "scoring_taskId_starLevel")
+}
+
+model TaskScoringFields {
+  id            String         @id @default(uuid())
+  taskScoring   TaskScoring    @relation(fields: [taskScoringId], references: [id])
+  taskScoringId String
+  formField     TaskFormFields @relation(fields: [formFieldId], references: [id])
+  formFieldId   String
+  failMessage   String?
+
+  // What the passing values are for the form field
+  passingInt  Int?
+  passingBool Boolean?
+
+  @@unique([taskScoringId, formFieldId], name: "taskScoringId_formFieldId")
+}
+
+model TaskScoringTime {
+  id            String      @id @default(uuid())
+  taskScoring   TaskScoring @relation(fields: [taskScoringId], references: [id])
+  taskScoringId String      @unique
+  maxTime       Int
+  passingTime   Int
+}
+
+// Task Attempts
+model TaskAttempt {
+  id                String              @id @default(uuid())
+  task              Task                @relation(fields: [taskId], references: [id])
+  taskId            String
+  user              User                @relation(fields: [userId], references: [id])
+  userId            String
+  score             Int?
+  passed            Boolean?
+  startedAt         DateTime
+  endedAt           DateTime
+  form              TaskAttemptForm[]
+  videoUrl          String?
+  submissions AttemptSubmission[]
+}
+
+model TaskAttemptForm {
+  id            String         @id @default(uuid())
+  taskAttempt   TaskAttempt    @relation(fields: [taskAttemptId], references: [id])
+  taskAttemptId String
+  formField     TaskFormFields @relation(fields: [formFieldId], references: [id])
+  formFieldId   String
+  value         String
+}
+
+// Attempt Submissions
+model AttemptSubmission {
+  id        String             @id @default(uuid())
+  attempt   TaskAttempt        @relation(fields: [attemptId], references: [id])
+  attemptId String
+  user      User               @relation(fields: [userId], references: [id])
+  userId    String
+  createdAt DateTime           @default(now())
+  reviews   SubmissionReview[]
+}
+
+model SubmissionReview {
+  id           String              @id @default(uuid())
+  submission   AttemptSubmission   @relation(fields: [submissionId], references: [id])
+  submissionId String
+  user         User                @relation(fields: [userId], references: [id])
+  userId       String
+  createdAt    DateTime            @default(now())
+  content      String
+  fields       SubmissionFieldValues[]
+}
+
+model ReviewFields {
+  id    String @id @default(uuid())
+  title String
+  slug  String @unique
+  order Int
+
+  level1_description String
+  level2_description String
+  level3_description String
+
+  ReviewFieldValues SubmissionFieldValues[]
+}
+
+model SubmissionFieldValues {
+  id                 String            @id @default(uuid())
+  reviewField        ReviewFields      @relation(fields: [reviewFieldId], references: [id])
+  reviewFieldId      String
+  SubmissionReview   SubmissionReview? @relation(fields: [submissionReviewId], references: [id])
+  submissionReviewId String?
+  value              Int
+}
